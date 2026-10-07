@@ -7,7 +7,7 @@ test('places single and CSV text on the selected page and preserves the template
   const source = await PDFDocument.create(); source.addPage([400, 500]); source.addPage([400, 500]);
   const bytes = await source.save();
   const fields = [{ name: 'Name', value: 'Alice', page: 1, x: 50, y: 60, size: 16, color: '#172d43' }];
-  for (const [values, expected] of [[{}, 'Alice'], [{ Name: 'Bob' }, 'Bob']]) {
+  for (const [values, expected] of [[null, 'Alice'], [{ Name: 'Bob' }, 'Bob']]) {
     const result = await personalize(bytes, fields, values);
     const parsed = await getDocument({ data: result.slice(), useSystemFonts: true }).promise;
     assert.equal(parsed.numPages, 2);
@@ -46,5 +46,17 @@ test('exports every font family with bold and italic and draws multiline underli
       assert.ok(ops.fnArray.includes((await import('pdfjs-dist/legacy/build/pdf.mjs')).OPS.constructPath), 'underline drawing instructions exist');
       await parsed.destroy();
     }
+  }
+});
+
+test('empty and missing CSV values never fall back to placeholder text', async () => {
+  const source = await PDFDocument.create(); source.addPage();
+  const field = { name: 'Name', value: 'Placeholder', page: 0, x: 20, y: 20, size: 16, color: '#000000', underline: true };
+  for (const values of [{ Name: '' }, { Name: null }, {}]) {
+    const result = await personalize(await source.save(), [field], values);
+    const parsed = await getDocument({ data: result }).promise;
+    const content = await (await parsed.getPage(1)).getTextContent();
+    assert.equal(content.items.length, 0);
+    await parsed.destroy();
   }
 });

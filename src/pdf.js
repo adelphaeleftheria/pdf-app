@@ -5,7 +5,7 @@ export function fontName(field) {
   const family = field.font === 'Courier' ? 'Courier' : 'Helvetica';
   return StandardFonts[family + (field.bold ? (field.italic ? 'BoldOblique' : 'Bold') : (field.italic ? 'Oblique' : ''))];
 }
-export async function personalize(bytes, fields, values = {}) {
+export async function personalize(bytes, fields, values = null) {
   const doc = await PDFDocument.load(bytes);
   const fonts = new Map();
   for (const field of fields) {
@@ -14,7 +14,8 @@ export async function personalize(bytes, fields, values = {}) {
     const font = fonts.get(name);
     const page = doc.getPage(field.page);
     if (page.getRotation().angle !== 0) throw new Error('Rotated PDF pages are not supported yet. Please upload a PDF with unrotated pages.');
-    const value = String(values[field.name] ?? field.value ?? '');
+    const value = String(values === null ? (field.value ?? '') : (values[field.name] ?? ''));
+    if (!value) continue;
     const lines = value.split(/\r?\n/);
     lines.forEach((text, index) => {
       const y = page.getHeight() - field.y - field.size - index * field.size * 1.2;

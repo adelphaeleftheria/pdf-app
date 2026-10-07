@@ -4,13 +4,16 @@ import worker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import Papa from 'papaparse';
 import JSZip from 'jszip';
 import { personalize } from './pdf.js';
+import { createLayout, readLayout } from './layout.js';
+import { parseCSV } from './csv.js';
+import { batchFilename } from './filename.js';
 pdfjs.GlobalWorkerOptions.workerSrc = worker;
 const $ = id => document.getElementById(id);
 let bytes, pdf, pageIndex = 0, scale = 1, fields = [], rows = [], busy = false, selected = null, mode = 'single';
 const status = text => $('status').textContent = text;
 function save(data, name, type) { const url = URL.createObjectURL(new Blob([data], { type })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 10000); }
 function validFields() { const names = fields.map(f => f.name); if (!names.length) throw new Error('Add at least one text field.'); if (names.some(n => !n.trim() || n !== n.trim()) || new Set(names).size !== names.length) throw new Error('Field names must be nonempty and unique.'); }
-function controls() { $('add').disabled = !pdf || busy; $('download').disabled = !pdf || !fields.length || busy; $('batch').disabled = !pdf || !fields.length || !rows.length || busy; $('prev').disabled = !pdf || pageIndex === 0 || busy; $('next').disabled = !pdf || pageIndex >= pdf.numPages - 1 || busy; }
+function controls() { $('save-layout').disabled = !pdf || !fields.length || busy; $('load-layout').disabled = !pdf || busy; $('add').disabled = !pdf || busy; $('download').disabled = !pdf || !fields.length || busy; $('batch').disabled = !pdf || !fields.length || !rows.length || busy; $('prev').disabled = !pdf || pageIndex === 0 || busy; $('next').disabled = !pdf || pageIndex >= pdf.numPages - 1 || busy; }
 async function action(fn) { if (busy) return; busy = true; controls(); try { await fn(); } catch (e) { status(e.message.includes('WinAnsi') ? 'This font does not support one of your characters. Please use Latin text for this version.' : e.message); } finally { busy = false; controls(); } }
 function markers() {
   $('overlay').replaceChildren();
@@ -62,7 +65,7 @@ $('pdf').onchange = () => action(async () => {
   const file = $('pdf').files[0]; if (!file) return;
   const candidate = new Uint8Array(await file.arrayBuffer()); const loaded = await pdfjs.getDocument({ data: candidate.slice() }).promise;
   for (let i = 1; i <= loaded.numPages; i++) if ((await loaded.getPage(i)).rotate !== 0) throw new Error('Rotated pages are not supported yet. Please upload an unrotated PDF.');
-  bytes = candidate; pdf = loaded; fields = []; selected = null; rows = []; $('csv').value = ''; $('csv-info').textContent = ''; pageIndex = 0; fieldEditor(); await render(); $('filename').textContent = file.name; status('Click the PDF to place your first text field.');
+  bytes = candidate; pdf = loaded; fields = []; selected = null; rows = []; $('csv').value = ''; $('csv-info').textContent = ''; filenameOptions([]); pageIndex = 0; fieldEditor(); await render(); $('filename').textContent = file.name; status('Click the PDF to place your first text field.');
 });
 $('overlay').onpointerdown = e => { if (!busy && e.target === $('overlay')) { const rect = $('overlay').getBoundingClientRect(); addField((e.clientX - rect.left) / scale, Math.max(0, (e.clientY - rect.top) / scale)); } };
 $('add').onclick = () => addField(50, 50);
@@ -70,8 +73,54 @@ $('prev').onclick = () => action(async () => { pageIndex--; await render(); }); 
 for (const nextMode of ['single','bulk']) $(`${nextMode}-tab`).onclick = () => { mode = nextMode; fieldEditor(); $('single').hidden = mode !== 'single'; $('bulk').hidden = mode !== 'bulk'; $('single-tab').classList.toggle('active', mode === 'single'); $('bulk-tab').classList.toggle('active', mode === 'bulk'); };
 $('download').onclick = () => action(async () => { validFields(); save(await personalize(bytes, fields), 'personalized.pdf', 'application/pdf'); status('Your personalized PDF is ready.'); });
 $('sample').onclick = () => { try { validFields(); save(Papa.unparse([Object.fromEntries(fields.map(f => [f.name, f.value || 'Example text']))]), 'template.csv', 'text/csv'); } catch(e) { status(e.message); } };
-$('csv').onchange = async () => { rows = []; controls(); const file = $('csv').files[0]; if (!file) return; const result = Papa.parse(await file.text(), { header: true, skipEmptyLines: 'greedy', transformHeader: h => h.trim() }); const errors = result.errors.filter(error => error.code !== 'UndetectableDelimiter'); if (errors.length) { status(`CSV error: ${errors[0].message}`); return; } rows = result.data; $('csv-info').textContent = `${rows.length} rows loaded. Columns: ${(result.meta.fields || []).join(', ')}`; controls(); };
-$('batch').onclick = () => action(async () => { validFields(); const missing = fields.filter(f => !Object.hasOwn(rows[0], f.name)); if (missing.length) throw new Error(`Missing CSV columns: ${missing.map(f => f.name).join(', ')}`); const zip = new JSZip(); for (let i = 0; i < rows.length; i++) { status(`Creating PDF ${i + 1} of ${rows.length}…`); zip.file(`personalized-${String(i + 1).padStart(4, '0')}.pdf`, await personalize(bytes, fields, rows[i])); } save(await zip.generateAsync({ type: 'uint8array' }), 'personalized-pdfs.zip', 'application/zip'); status(`Created ${rows.length} PDFs in a ZIP file.`); });
+$('csv').onchange = async () => { rows = []; $('csv-info').textContent = ''; filenameOptions([]); controls(); const file = $('csv').files[0]; if (!file) return; let result; try { result = parseCSV(await file.text()); } catch (error) { status(error.message); return; } rows = result.data; filenameOptions(result.meta.fields || []); $('csv-info').textContent = `${rows.length} rows loaded. Columns: ${(result.meta.fields || []).join(', ')}`; controls(); };
+$('batch').onclick = () => action(async () => { validFields(); const missing = fields.filter(f => !Object.hasOwn(rows[0], f.name)); if (missing.length) throw new Error(`Missing CSV columns: ${missing.map(f => f.name).join(', ')}`); const zip = new JSZip(); const used = new Set(); for (let i = 0; i < rows.length; i++) { status(`Creating PDF ${i + 1} of ${rows.length}…`); const column = $('filename-column').value; const value = column ? rows[i][column] : String(i + 1).padStart(4, '0'); zip.file(batchFilename($('filename-prefix').value, value, i, used), await personalize(bytes, fields, rows[i])); } save(await zip.generateAsync({ type: 'uint8array' }), 'personalized-pdfs.zip', 'application/zip'); status(`Created ${rows.length} PDFs in a ZIP file.`); });
 
+let preferredFilenameColumn = '';
 let resizeTimer;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (pdf && !busy) action(render); }, 150); });
+
+async function pageSizes() {
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const viewport = (await pdf.getPage(i)).getViewport({ scale: 1 });
+    pages.push({ width: viewport.width, height: viewport.height });
+  }
+  return pages;
+}
+$('save-layout').onclick = () => action(async () => {
+  validFields();
+  const layout = JSON.parse(createLayout(fields, await pageSizes()));
+  layout.filename = { prefix: $('filename-prefix').value, column: preferredFilenameColumn || $('filename-column').value };
+  save(JSON.stringify(layout, null, 2), 'pdf-layout.json', 'application/json');
+  status('Layout saved. Upload your PDF and load this layout next time.');
+});
+$('load-layout').onclick = () => $('layout-file').click();
+$('layout-file').onchange = () => action(async () => {
+  const file = $('layout-file').files[0];
+  $('layout-file').value = '';
+  if (!file) return;
+  let data;
+  try { data = JSON.parse(await file.text()); } catch { throw new Error('Cannot read this layout. Choose a valid PDF Personalizer JSON file.'); }
+  const restored = readLayout(data, await pageSizes());
+  if (fields.length && !window.confirm('Replace the current text fields with this saved layout?')) return;
+  if (data.filename && typeof data.filename.prefix === 'string' && typeof data.filename.column === 'string') { $('filename-prefix').value = data.filename.prefix; preferredFilenameColumn = data.filename.column; filenameOptions(rows.length ? Object.keys(rows[0]) : []); }
+  fields = restored; selected = fields[0] || null; pageIndex = selected?.page || 0;
+  fieldEditor(); await render();
+  status(`Loaded ${fields.length} text fields. Positions, text, CSV names, and formatting restored.`);
+});
+
+function filenameOptions(columns) {
+  const previous = preferredFilenameColumn || $('filename-column').value;
+  $('filename-column').replaceChildren(new Option('Row number', ''));
+  for (const column of columns) $('filename-column').add(new Option(column, column));
+  if (columns.includes(previous)) $('filename-column').value = previous;
+  filenamePreview();
+}
+function filenamePreview() {
+  const column = $('filename-column').value;
+  const value = column ? rows[0]?.[column] ?? '' : '0001';
+  $('filename-preview').textContent = 'Example: ' + batchFilename($('filename-prefix').value, value, 0, new Set());
+}
+$('filename-prefix').oninput = filenamePreview;
+$('filename-column').onchange = () => { preferredFilenameColumn = $('filename-column').value; filenamePreview(); };
