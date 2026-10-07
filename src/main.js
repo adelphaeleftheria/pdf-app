@@ -10,10 +10,12 @@ import { batchFilename } from './filename.js';
 pdfjs.GlobalWorkerOptions.workerSrc = worker;
 const $ = id => document.getElementById(id);
 let bytes, pdf, pageIndex = 0, scale = 1, fields = [], rows = [], busy = false, selected = null, mode = 'single';
+let savedSet = null;
+try { const raw = localStorage.getItem('pdf-saved-set'); if (raw) savedSet = JSON.parse(raw); } catch {}
 const status = text => $('status').textContent = text;
 function save(data, name, type) { const url = URL.createObjectURL(new Blob([data], { type })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 10000); }
 function validFields() { const names = fields.map(f => f.name); if (!names.length) throw new Error('Add at least one text field.'); if (names.some(n => !n.trim() || n !== n.trim()) || new Set(names).size !== names.length) throw new Error('Field names must be nonempty and unique.'); }
-function controls() { $('save-layout').disabled = !pdf || !fields.length || busy; $('load-layout').disabled = !pdf || busy; $('add').disabled = !pdf || busy; $('download').disabled = !pdf || !fields.length || busy; $('batch').disabled = !pdf || !fields.length || !rows.length || busy; $('prev').disabled = !pdf || pageIndex === 0 || busy; $('next').disabled = !pdf || pageIndex >= pdf.numPages - 1 || busy; }
+function controls() { $('reuse-set').disabled = !pdf || !savedSet || busy; $('save-layout').disabled = !pdf || !fields.length || busy; $('load-layout').disabled = !pdf || busy; $('add').disabled = !pdf || busy; $('download').disabled = !pdf || !fields.length || busy; $('batch').disabled = !pdf || !fields.length || !rows.length || busy; $('prev').disabled = !pdf || pageIndex === 0 || busy; $('next').disabled = !pdf || pageIndex >= pdf.numPages - 1 || busy; }
 async function action(fn) { if (busy) return; busy = true; controls(); try { await fn(); } catch (e) { status(e.message.includes('WinAnsi') ? 'This font does not support one of your characters. Please use Latin text for this version.' : e.message); } finally { busy = false; controls(); } }
 function markers() {
   $('overlay').replaceChildren();
@@ -65,7 +67,20 @@ $('pdf').onchange = () => action(async () => {
   const file = $('pdf').files[0]; if (!file) return;
   const candidate = new Uint8Array(await file.arrayBuffer()); const loaded = await pdfjs.getDocument({ data: candidate.slice() }).promise;
   for (let i = 1; i <= loaded.numPages; i++) if ((await loaded.getPage(i)).rotate !== 0) throw new Error('Rotated pages are not supported yet. Please upload an unrotated PDF.');
-  bytes = candidate; pdf = loaded; fields = []; selected = null; rows = []; $('csv').value = ''; $('csv-info').textContent = ''; filenameOptions([]); pageIndex = 0; fieldEditor(); await render(); $('filename').textContent = file.name; status('Click the PDF to place your first text field.');
+  let restored = [], note = 'Click the PDF to place your first text field.';
+  if (fields.length) {
+    // Validate before replacing the document so a mismatch cannot discard current work.
+    try { restored = readLayout(JSON.parse(createLayout(fields, await pageSizes())), await pageSizes(loaded)); }
+    catch (error) { await loaded.destroy(); throw new Error('Your current set was kept. Choose a PDF with matching page count and sizes to reuse it. ' + error.message); }
+    note = `Reused all ${restored.length} placeholders on the new PDF. CSV data was kept too.`;
+  } else if (savedSet) {
+    try { restored = readLayout(savedSet, await pageSizes(loaded)); applyFilenameSettings(savedSet); note = `Restored all ${restored.length} placeholders from your saved set.`; }
+    catch { note = 'PDF loaded. Your saved set is still available, but needs matching page count and sizes.'; }
+  }
+  const previousPDF = pdf;
+  bytes = candidate; pdf = loaded; fields = restored; selected = fields[0] || null; pageIndex = selected?.page || 0;
+  fieldEditor(); await render(); $('filename').textContent = file.name; status(note);
+  if (previousPDF) await previousPDF.destroy();
 });
 $('overlay').onpointerdown = e => { if (!busy && e.target === $('overlay')) { const rect = $('overlay').getBoundingClientRect(); addField((e.clientX - rect.left) / scale, Math.max(0, (e.clientY - rect.top) / scale)); } };
 $('add').onclick = () => addField(50, 50);
@@ -80,10 +95,10 @@ let preferredFilenameColumn = '';
 let resizeTimer;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (pdf && !busy) action(render); }, 150); });
 
-async function pageSizes() {
+async function pageSizes(document = pdf) {
   const pages = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const viewport = (await pdf.getPage(i)).getViewport({ scale: 1 });
+  for (let i = 1; i <= document.numPages; i++) {
+    const viewport = (await document.getPage(i)).getViewport({ scale: 1 });
     pages.push({ width: viewport.width, height: viewport.height });
   }
   return pages;
@@ -92,8 +107,9 @@ $('save-layout').onclick = () => action(async () => {
   validFields();
   const layout = JSON.parse(createLayout(fields, await pageSizes()));
   layout.filename = { prefix: $('filename-prefix').value, column: preferredFilenameColumn || $('filename-column').value };
+  const persisted = rememberSet(layout);
   save(JSON.stringify(layout, null, 2), 'pdf-layout.json', 'application/json');
-  status('Layout saved. Upload your PDF and load this layout next time.');
+  status(`Saved all ${fields.length} placeholders and filename settings. ${persisted ? 'They will restore automatically when you upload a compatible PDF next time.' : 'Browser storage is unavailable; keep the downloaded set file for reuse.'}`);
 });
 $('load-layout').onclick = () => $('layout-file').click();
 $('layout-file').onchange = () => action(async () => {
@@ -104,7 +120,7 @@ $('layout-file').onchange = () => action(async () => {
   try { data = JSON.parse(await file.text()); } catch { throw new Error('Cannot read this layout. Choose a valid PDF Personalizer JSON file.'); }
   const restored = readLayout(data, await pageSizes());
   if (fields.length && !window.confirm('Replace the current text fields with this saved layout?')) return;
-  if (data.filename && typeof data.filename.prefix === 'string' && typeof data.filename.column === 'string') { $('filename-prefix').value = data.filename.prefix; preferredFilenameColumn = data.filename.column; filenameOptions(rows.length ? Object.keys(rows[0]) : []); }
+  applyFilenameSettings(data); rememberSet(data);
   fields = restored; selected = fields[0] || null; pageIndex = selected?.page || 0;
   fieldEditor(); await render();
   status(`Loaded ${fields.length} text fields. Positions, text, CSV names, and formatting restored.`);
@@ -124,3 +140,22 @@ function filenamePreview() {
 }
 $('filename-prefix').oninput = filenamePreview;
 $('filename-column').onchange = () => { preferredFilenameColumn = $('filename-column').value; filenamePreview(); };
+
+function rememberSet(data) {
+  savedSet = data;
+  try { localStorage.setItem('pdf-saved-set', JSON.stringify(data)); return true; } catch { return false; }
+}
+function applyFilenameSettings(data) {
+  if (data.filename && typeof data.filename.prefix === 'string' && typeof data.filename.column === 'string') {
+    $('filename-prefix').value = data.filename.prefix; preferredFilenameColumn = data.filename.column;
+    filenameOptions(rows.length ? Object.keys(rows[0]) : []);
+  }
+}
+$('reuse-set').onclick = () => action(async () => {
+  const restored = readLayout(savedSet, await pageSizes());
+  if (fields.length && !window.confirm('Replace all current placeholders with the entire saved set?')) return;
+  fields = restored; selected = fields[0] || null; pageIndex = selected?.page || 0;
+  applyFilenameSettings(savedSet); fieldEditor(); await render();
+  status(`Reused the entire set: ${fields.length} placeholders.`);
+});
+controls();

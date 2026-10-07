@@ -20,7 +20,7 @@ npm run dev
 3. Download a single personalized PDF, or select CSV batch.
 4. In CSV batch mode, give each field a unique CSV column name. Download the CSV template, fill in one row per recipient, and upload it. Column headers must match those names. Download the resulting ZIP.
 
-Text is added over the original document; existing text is not erased or edited. This initial version uses Helvetica with Latin characters and requires unrotated, unencrypted PDFs. Uploading another PDF resets the fields. Use Save layout to download a reusable JSON file, then upload the original PDF and use Load layout to restore it. Large batches use browser memory.
+Text is added over the original document; existing text is not erased or edited. This initial version uses Helvetica with Latin characters and requires unrotated, unencrypted PDFs. Uploading a compatible new PDF retains the entire current set and CSV data. An incompatible PDF is rejected without discarding current work. Use Save layout to download a reusable JSON file, then upload the original PDF and use Load layout to restore it. Large batches use browser memory.
 
 Use the header theme button to switch between light and dark mode. Your theme is remembered on this device. Text supports multiple lines.
 
@@ -28,7 +28,7 @@ On Windows, run `npm.cmd ci` and `npm.cmd run dev` in PowerShell. To update an e
 
 ## Reuse your setup
 
-Click **Save layout** after placing your fields. Keep the downloaded `pdf-layout.json` and your original PDF. Next time, upload that PDF and click **Load layout** to choose the JSON. It restores all field positions, pages, text, CSV column names, fonts, colors, and styles. Layouts require matching page counts and sizes; use the original PDF to preserve alignment. Loading replaces current fields after confirmation. Layout files include the text you entered, so store them accordingly.
+Click **Save entire set** after placing your fields. It saves every placeholder together, not just the selected one, both in this browser and in a downloaded JSON file. Keep the downloaded `pdf-layout.json` and your original PDF. Next time, upload that PDF and the saved set restores automatically on this browser. Use **Reuse saved set** to restore it manually, or **Load set file** to choose the JSON on another device. It restores all field positions, pages, text, CSV column names, fonts, colors, and styles. Layouts require matching page counts and sizes; use the original PDF to preserve alignment. Loading replaces current fields after confirmation. Layout files include the text you entered, so store them accordingly.
 
 In CSV batch mode, empty cells generate no text and no underline; they never use the example text from the editor. Explicitly quoted empty single-column rows and rows of empty cells are retained. The original PDF underneath is preserved.
 
