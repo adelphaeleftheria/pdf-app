@@ -1,0 +1,1 @@
+{"name":"pdf-personalizer","version":"1.0.0","private":true,"type":"module","scripts":{"dev":"vite --host 0.0.0.0","build":"vite build","preview":"vite preview --host 0.0.0.0","test":"node --test"},"dependencies":{"pdf-lib":"^1.17.1","pdfjs-dist":"^5.4.624","papaparse":"^5.5.3","jszip":"^3.10.1","vite":"^7.3.1"}}
