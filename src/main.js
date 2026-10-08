@@ -15,15 +15,23 @@ try { const raw = localStorage.getItem('pdf-saved-set'); if (raw) savedSet = JSO
 const status = text => $('status').textContent = text;
 function save(data, name, type) { const url = URL.createObjectURL(new Blob([data], { type })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 10000); }
 function validFields() { const names = fields.map(f => f.name); if (!names.length) throw new Error('Add at least one text field.'); if (names.some(n => !n.trim() || n !== n.trim()) || new Set(names).size !== names.length) throw new Error('Field names must be nonempty and unique.'); }
-function controls() { $('reuse-set').disabled = !pdf || !savedSet || busy; $('save-layout').disabled = !pdf || !fields.length || busy; $('load-layout').disabled = !pdf || busy; $('add').disabled = !pdf || busy; $('download').disabled = !pdf || !fields.length || busy; $('batch').disabled = !pdf || !fields.length || !rows.length || busy; $('prev').disabled = !pdf || pageIndex === 0 || busy; $('next').disabled = !pdf || pageIndex >= pdf.numPages - 1 || busy; }
+function controls() { $('add-box').disabled = !pdf || busy; $('reuse-set').disabled = !pdf || !savedSet || busy; $('save-layout').disabled = !pdf || !fields.length || busy; $('load-layout').disabled = !pdf || busy; $('add').disabled = !pdf || busy; $('download').disabled = !pdf || !fields.length || busy; $('batch').disabled = !pdf || !fields.length || !rows.length || busy; $('prev').disabled = !pdf || pageIndex === 0 || busy; $('next').disabled = !pdf || pageIndex >= pdf.numPages - 1 || busy; }
 async function action(fn) { if (busy) return; busy = true; controls(); try { await fn(); } catch (e) { status(e.message.includes('WinAnsi') ? 'This font does not support one of your characters. Please use Latin text for this version.' : e.message); } finally { busy = false; controls(); } }
 function markers() {
   $('overlay').replaceChildren();
   fields.filter(f => f.page === pageIndex).forEach(f => {
     const marker = document.createElement('div'); marker.className = 'marker' + (f === selected ? ' selected' : ''); marker.textContent = f.value || `{${f.name}}`; marker.style.cssText = `left:${f.x * scale}px;top:${f.y * scale}px;font-size:${f.size * scale}px;color:${f.color}`;
+    if ($('export-mode').value === 'movable') { marker.classList.add('text-box'); marker.style.minWidth = `${180 * scale}px`; marker.style.minHeight = `${(f.size * 1.2 + 4) * scale}px`; }
+    marker.addEventListener('dblclick', event => {
+      event.stopPropagation(); if (busy) return;
+      selected = f; fieldEditor(); marker.contentEditable = 'plaintext-only'; marker.textContent = f.value; marker.focus();
+      marker.oninput = () => { f.value = marker.innerText.replace(/\r/g, ''); $('text').value = f.value; };
+      marker.onblur = () => { marker.contentEditable = 'false'; marker.oninput = null; fieldEditor(); markers(); };
+      marker.onkeydown = event => { if (event.key === 'Escape' || (event.key === 'Enter' && (event.ctrlKey || event.metaKey))) { event.preventDefault(); marker.blur(); } };
+    });
     marker.style.fontFamily = f.font === 'Times' ? '"Times New Roman", serif' : f.font === 'Courier' ? '"Courier New", monospace' : 'Arial, sans-serif';
     marker.style.fontWeight = f.bold ? 'bold' : 'normal'; marker.style.fontStyle = f.italic ? 'italic' : 'normal'; marker.style.textDecoration = f.underline ? 'underline' : 'none';
-    marker.title = `Drag ${f.name} to move`; marker.addEventListener('pointerdown', e => { e.stopPropagation(); if (busy) return; selected = f; fieldEditor(); document.querySelectorAll('.marker').forEach(m => m.classList.remove('selected')); marker.classList.add('selected'); marker.setPointerCapture(e.pointerId); const startX = e.clientX, startY = e.clientY, x = f.x, y = f.y; marker.onpointermove = event => { f.x = Math.max(0, Math.min($('canvas').width / scale - 5, x + (event.clientX - startX) / scale)); f.y = Math.max(0, Math.min($('canvas').height / scale - f.size, y + (event.clientY - startY) / scale)); marker.style.left = `${f.x * scale}px`; marker.style.top = `${f.y * scale}px`; }; marker.onpointerup = () => { marker.onpointermove = null; }; });
+    marker.title = `Drag ${f.name} to move`; marker.addEventListener('pointerdown', e => { e.stopPropagation(); if (busy || marker.isContentEditable) return; selected = f; fieldEditor(); document.querySelectorAll('.marker').forEach(m => m.classList.remove('selected')); marker.classList.add('selected'); marker.setPointerCapture(e.pointerId); const startX = e.clientX, startY = e.clientY, x = f.x, y = f.y; marker.onpointermove = event => { f.x = Math.max(0, Math.min($('canvas').width / scale - 5, x + (event.clientX - startX) / scale)); f.y = Math.max(0, Math.min($('canvas').height / scale - f.size, y + (event.clientY - startY) / scale)); marker.style.left = `${f.x * scale}px`; marker.style.top = `${f.y * scale}px`; }; marker.onpointerup = () => { marker.onpointermove = null; }; });
     $('overlay').append(marker);
   }); controls();
 }
@@ -84,6 +92,7 @@ $('pdf').onchange = () => action(async () => {
 });
 $('overlay').onpointerdown = e => { if (!busy && e.target === $('overlay')) { const rect = $('overlay').getBoundingClientRect(); addField((e.clientX - rect.left) / scale, Math.max(0, (e.clientY - rect.top) / scale)); } };
 $('add').onclick = () => addField(50, 50);
+$('add-box').onclick = () => { $('export-mode').value = 'movable'; exportHelp(); addField(50, 50); status('Text box added. Type in the editor or double-click the box to type directly. Drag to move.'); };
 $('prev').onclick = () => action(async () => { pageIndex--; await render(); }); $('next').onclick = () => action(async () => { pageIndex++; await render(); });
 for (const nextMode of ['single','bulk']) $(`${nextMode}-tab`).onclick = () => { mode = nextMode; fieldEditor(); $('single').hidden = mode !== 'single'; $('bulk').hidden = mode !== 'bulk'; $('single-tab').classList.toggle('active', mode === 'single'); $('bulk-tab').classList.toggle('active', mode === 'bulk'); };
 $('download').onclick = () => action(async () => { validFields(); save(await personalize(bytes, fields, null, { mode: $('export-mode').value }), 'personalized.pdf', 'application/pdf'); status('Your personalized PDF is ready.'); });
@@ -166,4 +175,4 @@ function exportHelp() {
   const editable = $('export-mode').value === 'editable';
   $('export-help').textContent = $('export-mode').value === 'movable' ? 'Creates movable text annotations. In a compatible PDF app, open Comment / Annotate, select the text box to drag it, or double-click to edit it. Some browser viewers only display annotations.' : editable ? 'Creates fillable fields you can change later in Acrobat or a compatible PDF viewer. Font, bold, italic, size and color are kept; underline is available only with regular text.' : 'Adds text to the PDF page, including underline. Changing it later requires a PDF content editor.';
 }
-$('export-mode').onchange = exportHelp;
+$('export-mode').onchange = () => { exportHelp(); markers(); };

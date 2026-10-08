@@ -1,7 +1,7 @@
 import { PDFString, PDFHexString } from 'pdf-lib';
 export function addMovableText(doc, page, field, value, font, color) {
   const lines = value.split(/\r?\n/);
-  const width = Math.max(24, ...lines.map(line => font.widthOfTextAtSize(line, field.size) + 6));
+  const width = Math.max(180, ...lines.map(line => font.widthOfTextAtSize(line, field.size) + 6));
   const height = lines.length * field.size * 1.2 + 4;
   const x = field.x, y = page.getHeight() - field.y - height;
   const commands = ['q', `${color.join(' ')} rg`, `${color.join(' ')} RG`];

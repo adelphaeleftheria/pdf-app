@@ -3,3 +3,5 @@
 .layout-actions{display:flex;gap:8px;margin-top:12px}.layout-actions button{flex:1}
 
 #reuse-set{width:100%;margin-top:8px}
+
+#add-box{width:100%;margin-top:6px;background:var(--tint);color:var(--accent);border-color:var(--accent)}.marker.text-box{outline-style:dashed}.marker.text-box.selected{outline:2px dashed #238cff}.marker[contenteditable="plaintext-only"]{cursor:text;background:#ffffffd9;outline:2px dashed #238cff;white-space:pre}
