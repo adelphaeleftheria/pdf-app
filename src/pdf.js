@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { addMovableText } from './annotation.js';
 export function parseColor(hex) { return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255); }
 export function fontName(field) {
   if (field.font === 'Times') return field.bold ? (field.italic ? StandardFonts.TimesRomanBoldItalic : StandardFonts.TimesRomanBold) : (field.italic ? StandardFonts.TimesRomanItalic : StandardFonts.TimesRoman);
@@ -18,6 +19,10 @@ export async function personalize(bytes, fields, values = null, options = {}) {
     const page = doc.getPage(field.page);
     if (page.getRotation().angle !== 0) throw new Error('Rotated PDF pages are not supported yet. Please upload a PDF with unrotated pages.');
     const value = String(values === null ? (field.value ?? '') : (values[field.name] ?? ''));
+    if (options.mode === 'movable') {
+      if (value) addMovableText(doc, page, field, value, font, parseColor(field.color));
+      continue;
+    }
     if (editable) {
       let fieldName = field.name, suffix = 2;
       while (usedNames.has(fieldName) || [...usedNames].some(existing => existing.startsWith(fieldName + '.') || fieldName.startsWith(existing + '.'))) fieldName = `${field.name.replaceAll('.', '_')}_${suffix++}`;

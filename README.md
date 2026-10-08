@@ -41,3 +41,5 @@ The site is built for `/pdf-app/`. In the repository's **Settings → Pages**, s
 ## Editable PDF text
 
 Under **Export → PDF text type**, choose **Regular text** for page text (the existing behavior), or **Editable text fields** for standard AcroForm fields. Editable fields can be filled and saved later in Adobe Acrobat Reader and compatible PDF viewers. This is form editing, rather than editing arbitrary page content. Both single and CSV batch downloads support the choice, and saved sets remember it. Editable mode preserves font, size, bold, italic and color; underline is supported in regular mode only. Blank CSV cells remain blank editable fields. Existing form fields in the original PDF are preserved.
+
+Choose **Editable & movable text** to export FreeText annotations. In a compatible PDF annotation editor, use Comment / Annotate to select and drag the text box, or double-click to change its text. These annotations are unlocked and preserve the selected font appearance and underline. Some PDF viewers only display them; editing and moving depend on viewer support. Empty CSV values create no annotation.

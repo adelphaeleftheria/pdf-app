@@ -80,3 +80,21 @@ test('editable CSV blank stays empty but remains a fillable field', async () => 
   const loaded = await PDFDocument.load(result); const blank = loaded.getForm().getTextField('Name');
   assert.equal(blank.getText() ?? '', ''); assert.equal(blank.isReadOnly(), false);
 });
+test('movable export contains unlocked FreeText annotations with text and position that can be changed', async () => {
+  const { PDFName, PDFNumber, PDFHexString } = await import('pdf-lib');
+  const source = await PDFDocument.create(); source.addPage([500, 600]);
+  const field = { name: 'Name', value: 'Alice\nSmith', page: 0, x: 30, y: 70, size: 18, color: '#112233', font: 'Times', bold: true, italic: true, underline: true };
+  const output = await personalize(await source.save(), [field], null, { mode: 'movable' });
+  const doc = await PDFDocument.load(output); const annotation = doc.getPage(0).node.Annots().lookup(0);
+  assert.equal(annotation.get(PDFName.of('Subtype')).toString(), '/FreeText');
+  assert.equal(annotation.get(PDFName.of('Contents')).decodeText(), 'Alice\nSmith');
+  assert.equal(annotation.get(PDFName.of('F')).asNumber(), 4, 'printable, without locked/read-only flags');
+  assert.ok(annotation.get(PDFName.of('AP')));
+  const rect = annotation.get(PDFName.of('Rect'));rect.set(0, PDFNumber.of(100));rect.set(2, PDFNumber.of(300));
+  annotation.set(PDFName.of('Contents'), PDFHexString.fromText('Edited text'));
+  const reopened = await PDFDocument.load(await doc.save()); const updated = reopened.getPage(0).node.Annots().lookup(0);
+  assert.equal(updated.get(PDFName.of('Contents')).decodeText(), 'Edited text');
+  assert.equal(updated.get(PDFName.of('Rect')).get(0).asNumber(), 100);
+  const blank = await PDFDocument.load(await personalize(await source.save(), [field], { Name: '' }, { mode: 'movable' }));
+  assert.equal(blank.getPage(0).node.Annots()?.size() || 0, 0);
+});

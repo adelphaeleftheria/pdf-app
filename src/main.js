@@ -147,7 +147,7 @@ function rememberSet(data) {
   try { localStorage.setItem('pdf-saved-set', JSON.stringify(data)); return true; } catch { return false; }
 }
 function applyFilenameSettings(data) {
-  if (['regular', 'editable'].includes(data.exportMode)) { $('export-mode').value = data.exportMode; exportHelp(); }
+  if (['regular', 'editable', 'movable'].includes(data.exportMode)) { $('export-mode').value = data.exportMode; exportHelp(); }
   if (data.filename && typeof data.filename.prefix === 'string' && typeof data.filename.column === 'string') {
     $('filename-prefix').value = data.filename.prefix; preferredFilenameColumn = data.filename.column;
     filenameOptions(rows.length ? Object.keys(rows[0]) : []);
@@ -164,6 +164,6 @@ controls();
 
 function exportHelp() {
   const editable = $('export-mode').value === 'editable';
-  $('export-help').textContent = editable ? 'Creates fillable fields you can change later in Acrobat or a compatible PDF viewer. Font, bold, italic, size and color are kept; underline is available only with regular text.' : 'Adds text to the PDF page, including underline. Changing it later requires a PDF content editor.';
+  $('export-help').textContent = $('export-mode').value === 'movable' ? 'Creates movable text annotations. In a compatible PDF app, open Comment / Annotate, select the text box to drag it, or double-click to edit it. Some browser viewers only display annotations.' : editable ? 'Creates fillable fields you can change later in Acrobat or a compatible PDF viewer. Font, bold, italic, size and color are kept; underline is available only with regular text.' : 'Adds text to the PDF page, including underline. Changing it later requires a PDF content editor.';
 }
 $('export-mode').onchange = exportHelp;
