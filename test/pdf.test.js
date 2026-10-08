@@ -60,3 +60,23 @@ test('empty and missing CSV values never fall back to placeholder text', async (
     await parsed.destroy();
   }
 });
+test('editable export contains writable fields, preserves existing forms and permits later edits', async () => {
+  const source = await PDFDocument.create(); const page = source.addPage([500, 600]);
+  const existing = source.getForm().createTextField('Name'); existing.setText('Original'); existing.addToPage(page);
+  const field = { name: 'Name', value: 'Alice', page: 0, x: 30, y: 70, size: 18, color: '#112233', font: 'Times', bold: true, italic: true };
+  const result = await personalize(await source.save(), [field], null, { mode: 'editable' });
+  const loaded = await PDFDocument.load(result); const form = loaded.getForm();
+  assert.equal(form.getTextField('Name').getText(), 'Original');
+  const added = form.getTextField('Name_2'); assert.equal(added.getText(), 'Alice'); assert.equal(added.isReadOnly(), false);
+  assert.equal(added.acroField.getWidgets().length, 1);
+  added.setText('Changed later');
+  const reopened = await PDFDocument.load(await loaded.save());
+  assert.equal(reopened.getForm().getTextField('Name_2').getText(), 'Changed later');
+});
+test('editable CSV blank stays empty but remains a fillable field', async () => {
+  const source = await PDFDocument.create(); source.addPage();
+  const field = { name: 'Name', value: 'Example', page: 0, x: 20, y: 20, size: 16, color: '#000000' };
+  const result = await personalize(await source.save(), [field], { Name: '' }, { mode: 'editable' });
+  const loaded = await PDFDocument.load(result); const blank = loaded.getForm().getTextField('Name');
+  assert.equal(blank.getText() ?? '', ''); assert.equal(blank.isReadOnly(), false);
+});

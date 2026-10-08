@@ -5,9 +5,12 @@ export function fontName(field) {
   const family = field.font === 'Courier' ? 'Courier' : 'Helvetica';
   return StandardFonts[family + (field.bold ? (field.italic ? 'BoldOblique' : 'Bold') : (field.italic ? 'Oblique' : ''))];
 }
-export async function personalize(bytes, fields, values = null) {
+export async function personalize(bytes, fields, values = null, options = {}) {
   const doc = await PDFDocument.load(bytes);
   const fonts = new Map();
+  const editable = options.mode === 'editable';
+  const form = editable ? doc.getForm() : null;
+  const usedNames = new Set(form ? form.getFields().map(f => f.getName()) : []);
   for (const field of fields) {
     const name = fontName(field);
     if (!fonts.has(name)) fonts.set(name, await doc.embedFont(name));
@@ -15,6 +18,22 @@ export async function personalize(bytes, fields, values = null) {
     const page = doc.getPage(field.page);
     if (page.getRotation().angle !== 0) throw new Error('Rotated PDF pages are not supported yet. Please upload a PDF with unrotated pages.');
     const value = String(values === null ? (field.value ?? '') : (values[field.name] ?? ''));
+    if (editable) {
+      let fieldName = field.name, suffix = 2;
+      while (usedNames.has(fieldName) || [...usedNames].some(existing => existing.startsWith(fieldName + '.') || fieldName.startsWith(existing + '.'))) fieldName = `${field.name.replaceAll('.', '_')}_${suffix++}`;
+      usedNames.add(fieldName);
+      const textField = form.createTextField(fieldName);
+      const lines = value.split(/\r?\n/);
+      const width = Math.min(page.getWidth() - field.x, Math.max(180, ...lines.map(line => font.widthOfTextAtSize(line, field.size) + 6)));
+      const height = Math.min(page.getHeight() - field.y, Math.max(field.size * 1.5, lines.length * field.size * 1.2 + 6));
+      if (width <= 2 || height < field.size) throw new Error(`Move ${field.name} further inside the page to create an editable field.`);
+      if (lines.length > 1) textField.enableMultiline();
+      textField.setText(value);
+      textField.addToPage(page, { x: field.x - 1, y: page.getHeight() - field.y - height, width, height, font, textColor: rgb(...parseColor(field.color)), borderWidth: 0, backgroundColor: undefined, borderColor: undefined });
+      textField.setFontSize(field.size);
+      textField.updateAppearances(font);
+      continue;
+    }
     if (!value) continue;
     const lines = value.split(/\r?\n/);
     lines.forEach((text, index) => {

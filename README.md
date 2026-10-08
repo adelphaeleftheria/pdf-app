@@ -37,3 +37,7 @@ For custom batch filenames, enter a **Filename prefix** and choose a CSV column 
 ## GitHub Pages
 
 The site is built for `/pdf-app/`. In the repository's **Settings → Pages**, set **Source** to **Deploy from a branch**, select **gh-pages** and **/ (root)**, and save. The GitHub Actions workflow rebuilds and publishes the site after changes to `main`. PDFs and CSVs are processed in the browser. Browser-saved sets are scoped to the site address; use Load set file to transfer a layout from the local app.
+
+## Editable PDF text
+
+Under **Export → PDF text type**, choose **Regular text** for page text (the existing behavior), or **Editable text fields** for standard AcroForm fields. Editable fields can be filled and saved later in Adobe Acrobat Reader and compatible PDF viewers. This is form editing, rather than editing arbitrary page content. Both single and CSV batch downloads support the choice, and saved sets remember it. Editable mode preserves font, size, bold, italic and color; underline is supported in regular mode only. Blank CSV cells remain blank editable fields. Existing form fields in the original PDF are preserved.

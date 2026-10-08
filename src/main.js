@@ -86,10 +86,10 @@ $('overlay').onpointerdown = e => { if (!busy && e.target === $('overlay')) { co
 $('add').onclick = () => addField(50, 50);
 $('prev').onclick = () => action(async () => { pageIndex--; await render(); }); $('next').onclick = () => action(async () => { pageIndex++; await render(); });
 for (const nextMode of ['single','bulk']) $(`${nextMode}-tab`).onclick = () => { mode = nextMode; fieldEditor(); $('single').hidden = mode !== 'single'; $('bulk').hidden = mode !== 'bulk'; $('single-tab').classList.toggle('active', mode === 'single'); $('bulk-tab').classList.toggle('active', mode === 'bulk'); };
-$('download').onclick = () => action(async () => { validFields(); save(await personalize(bytes, fields), 'personalized.pdf', 'application/pdf'); status('Your personalized PDF is ready.'); });
+$('download').onclick = () => action(async () => { validFields(); save(await personalize(bytes, fields, null, { mode: $('export-mode').value }), 'personalized.pdf', 'application/pdf'); status('Your personalized PDF is ready.'); });
 $('sample').onclick = () => { try { validFields(); save(Papa.unparse([Object.fromEntries(fields.map(f => [f.name, f.value || 'Example text']))]), 'template.csv', 'text/csv'); } catch(e) { status(e.message); } };
 $('csv').onchange = async () => { rows = []; $('csv-info').textContent = ''; filenameOptions([]); controls(); const file = $('csv').files[0]; if (!file) return; let result; try { result = parseCSV(await file.text()); } catch (error) { status(error.message); return; } rows = result.data; filenameOptions(result.meta.fields || []); $('csv-info').textContent = `${rows.length} rows loaded. Columns: ${(result.meta.fields || []).join(', ')}`; controls(); };
-$('batch').onclick = () => action(async () => { validFields(); const missing = fields.filter(f => !Object.hasOwn(rows[0], f.name)); if (missing.length) throw new Error(`Missing CSV columns: ${missing.map(f => f.name).join(', ')}`); const zip = new JSZip(); const used = new Set(); for (let i = 0; i < rows.length; i++) { status(`Creating PDF ${i + 1} of ${rows.length}…`); const column = $('filename-column').value; const value = column ? rows[i][column] : String(i + 1).padStart(4, '0'); zip.file(batchFilename($('filename-prefix').value, value, i, used), await personalize(bytes, fields, rows[i])); } save(await zip.generateAsync({ type: 'uint8array' }), 'personalized-pdfs.zip', 'application/zip'); status(`Created ${rows.length} PDFs in a ZIP file.`); });
+$('batch').onclick = () => action(async () => { validFields(); const missing = fields.filter(f => !Object.hasOwn(rows[0], f.name)); if (missing.length) throw new Error(`Missing CSV columns: ${missing.map(f => f.name).join(', ')}`); const zip = new JSZip(); const used = new Set(); for (let i = 0; i < rows.length; i++) { status(`Creating PDF ${i + 1} of ${rows.length}…`); const column = $('filename-column').value; const value = column ? rows[i][column] : String(i + 1).padStart(4, '0'); zip.file(batchFilename($('filename-prefix').value, value, i, used), await personalize(bytes, fields, rows[i], { mode: $('export-mode').value })); } save(await zip.generateAsync({ type: 'uint8array' }), 'personalized-pdfs.zip', 'application/zip'); status(`Created ${rows.length} PDFs in a ZIP file.`); });
 
 let preferredFilenameColumn = '';
 let resizeTimer;
@@ -106,6 +106,7 @@ async function pageSizes(document = pdf) {
 $('save-layout').onclick = () => action(async () => {
   validFields();
   const layout = JSON.parse(createLayout(fields, await pageSizes()));
+  layout.exportMode = $('export-mode').value;
   layout.filename = { prefix: $('filename-prefix').value, column: preferredFilenameColumn || $('filename-column').value };
   const persisted = rememberSet(layout);
   save(JSON.stringify(layout, null, 2), 'pdf-layout.json', 'application/json');
@@ -146,6 +147,7 @@ function rememberSet(data) {
   try { localStorage.setItem('pdf-saved-set', JSON.stringify(data)); return true; } catch { return false; }
 }
 function applyFilenameSettings(data) {
+  if (['regular', 'editable'].includes(data.exportMode)) { $('export-mode').value = data.exportMode; exportHelp(); }
   if (data.filename && typeof data.filename.prefix === 'string' && typeof data.filename.column === 'string') {
     $('filename-prefix').value = data.filename.prefix; preferredFilenameColumn = data.filename.column;
     filenameOptions(rows.length ? Object.keys(rows[0]) : []);
@@ -159,3 +161,9 @@ $('reuse-set').onclick = () => action(async () => {
   status(`Reused the entire set: ${fields.length} placeholders.`);
 });
 controls();
+
+function exportHelp() {
+  const editable = $('export-mode').value === 'editable';
+  $('export-help').textContent = editable ? 'Creates fillable fields you can change later in Acrobat or a compatible PDF viewer. Font, bold, italic, size and color are kept; underline is available only with regular text.' : 'Adds text to the PDF page, including underline. Changing it later requires a PDF content editor.';
+}
+$('export-mode').onchange = exportHelp;
