@@ -33,3 +33,7 @@ Click **Save entire set** after placing your fields. It saves every placeholder 
 In CSV batch mode, empty cells generate no text and no underline; they never use the example text from the editor. Explicitly quoted empty single-column rows and rows of empty cells are retained. The original PDF underneath is preserved.
 
 For custom batch filenames, enter a **Filename prefix** and choose a CSV column under **Append CSV value**. For example, `Certificate_` plus the `Name` column creates `Certificate_Alice.pdf`. A preview shows the first filename. Duplicate names get numbered suffixes, and invalid filename characters are replaced. Filename settings are also saved with your layout.
+
+## GitHub Pages
+
+The site is built for `/pdf-app/`. In the repository's **Settings → Pages**, set **Source** to **Deploy from a branch**, select **gh-pages** and **/ (root)**, and save. The GitHub Actions workflow rebuilds and publishes the site after changes to `main`. PDFs and CSVs are processed in the browser. Browser-saved sets are scoped to the site address; use Load set file to transfer a layout from the local app.
